@@ -1,19 +1,11 @@
-const express = require("express")
-const bodyParser = require("body-parser")
-const multer = require("multer")
-const cors = require("cors")
-const { put } = require("@vercel/blob")
-const { MongoClient, ServerApiVersion } = require("mongodb")
+import express from "express"
+import bodyParser from "body-parser"
+import multer from "multer"
+import cors from "cors"
+import { put } from "@vercel/blob"
+import { sql } from "@vercel/postgres"
 
 const app = express()
-
-// MongoDB connection string (replace with your actual connection string)
-const uri = process.env.MONGODB_URI
-const client = new MongoClient(uri, {
-  serverApi: ServerApiVersion.v1,
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
 
 // Enable CORS
 app.use(cors())
@@ -54,49 +46,30 @@ app.post("/api/reviews", upload.array("images", 3), async (req, res) => {
       }),
     )
 
-    const reviewData = {
-      name,
-      email,
-      rating: Number.parseInt(rating, 10),
-      review,
-      images: imageFiles,
-      date: new Date().toISOString(),
-    }
+    // Insert the review into Vercel Postgres
+    const result = await sql`
+      INSERT INTO reviews (name, email, rating, review, images, date)
+      VALUES (${name}, ${email}, ${Number.parseInt(rating, 10)}, ${review}, ${JSON.stringify(imageFiles)}, ${new Date().toISOString()})
+      RETURNING *;
+    `
 
-    // Connect to MongoDB
-    await client.connect()
-    const database = client.db("reviewsDB")
-    const reviews = database.collection("reviews")
-
-    // Insert the review
-    const result = await reviews.insertOne(reviewData)
-
-    res.status(200).json({ message: "Review saved successfully", review: reviewData })
+    res.status(200).json({ message: "Review saved successfully", review: result.rows[0] })
   } catch (error) {
     console.error("Error saving review:", error)
     res.status(500).json({ error: "An error occurred while saving the review" })
-  } finally {
-    await client.close()
   }
 })
 
 // API endpoint to fetch reviews
 app.get("/api/reviews", async (req, res) => {
   try {
-    // Connect to MongoDB
-    await client.connect()
-    const database = client.db("reviewsDB")
-    const reviews = database.collection("reviews")
+    // Fetch all reviews from Vercel Postgres
+    const result = await sql`SELECT * FROM reviews ORDER BY date DESC;`
 
-    // Fetch all reviews
-    const allReviews = await reviews.find({}).toArray()
-
-    res.status(200).json({ reviews: allReviews })
+    res.status(200).json({ reviews: result.rows })
   } catch (error) {
     console.error("Error fetching reviews:", error)
     res.status(500).json({ error: "An error occurred while fetching reviews" })
-  } finally {
-    await client.close()
   }
 })
 
@@ -105,9 +78,5 @@ app.use((req, res) => {
   res.status(404).json({ error: "Route not found." })
 })
 
+export default app
 
-
-// // Start server
-// app.listen(PORT, () => {
-//     console.log(`Server running at http://localhost:${PORT}`);
-// });
