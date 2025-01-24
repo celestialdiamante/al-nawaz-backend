@@ -8,6 +8,7 @@
     "dev": "nodemon server"
   },
   "author": "kaifi azmi",
+  "type": "module",
   "license": "ISC",
   "description": "",
   "dependencies": {
